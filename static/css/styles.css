@@ -1,0 +1,254 @@
+/* =========================================================================
+   Game Explorer - styles
+   Plain CSS, no libraries. Colors and spacing live in custom properties so
+   the whole app stays consistent.
+   ========================================================================= */
+
+:root {
+  --bg: #0f1117;
+  --surface: #181b24;
+  --surface-2: #222632;
+  --border: #2e3342;
+  --text: #e8eaf0;
+  --text-muted: #9aa1b2;
+  --accent: #7c5cff;
+  --accent-hover: #6a48f5;
+  --success: #2ecc71;
+  --warning: #f5b942;
+  --danger: #ff5c6c;
+
+  --radius: 10px;
+  --radius-sm: 6px;
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 24px;
+  --space-6: 32px;
+
+  --font: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+}
+
+/* ---------- Base ---------- */
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: var(--font);
+  background: var(--bg);
+  color: var(--text);
+  line-height: 1.5;
+}
+
+[hidden] {
+  display: none !important;
+}
+
+img {
+  max-width: 100%;
+  display: block;
+}
+
+a {
+  color: var(--accent);
+}
+
+.container {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 0 var(--space-5);
+}
+
+/* ---------- Header ---------- */
+.site-header {
+  border-bottom: 1px solid var(--border);
+  padding: var(--space-5) 0;
+  margin-bottom: var(--space-5);
+}
+
+.logo {
+  margin: 0;
+  font-size: 1.75rem;
+  letter-spacing: -0.5px;
+}
+
+.logo span {
+  color: var(--accent);
+}
+
+.tagline {
+  margin: var(--space-1) 0 0;
+  color: var(--text-muted);
+}
+
+/* ---------- Buttons ---------- */
+.btn {
+  font: inherit;
+  font-weight: 600;
+  border: none;
+  border-radius: var(--radius-sm);
+  padding: var(--space-2) var(--space-5);
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.btn-primary {
+  background: var(--accent);
+  color: #fff;
+}
+
+.btn-primary:hover {
+  background: var(--accent-hover);
+}
+
+.btn-secondary {
+  background: var(--surface-2);
+  color: var(--text);
+  border: 1px solid var(--border);
+}
+
+.btn-secondary:hover {
+  background: var(--border);
+}
+
+/* ---------- Search form ---------- */
+.search-form {
+  display: grid;
+  grid-template-columns: 2fr 1fr 1fr 1fr auto;
+  gap: var(--space-3);
+  align-items: end;
+  background: var(--surface);
+  padding: var(--space-4);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.field label {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+}
+
+.field input,
+.field select {
+  font: inherit;
+  color: var(--text);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: var(--space-2) var(--space-3);
+}
+
+.field input:focus,
+.field select:focus {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.form-error {
+  color: var(--danger);
+  margin: var(--space-2) 0 0;
+}
+
+/* ---------- Status / loading ---------- */
+.status {
+  text-align: center;
+  color: var(--text-muted);
+  padding: var(--space-6) 0;
+}
+
+.loader {
+  width: 40px;
+  height: 40px;
+  margin: var(--space-6) auto;
+  border: 4px solid var(--surface-2);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* ---------- Results grid ---------- */
+.results-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: var(--space-4);
+  margin-top: var(--space-5);
+}
+
+.load-more-wrap {
+  text-align: center;
+  margin: var(--space-5) 0 var(--space-6);
+}
+
+/* ---------- Detail view ---------- */
+#detail-view {
+  padding-bottom: var(--space-6);
+}
+
+/* ---------- Lightbox ---------- */
+.lightbox {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.9);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+}
+
+.lightbox img {
+  max-width: 85vw;
+  max-height: 85vh;
+  border-radius: var(--radius-sm);
+}
+
+.lightbox-btn {
+  position: absolute;
+  background: rgba(255, 255, 255, 0.1);
+  color: #fff;
+  border: none;
+  font-size: 2rem;
+  width: 52px;
+  height: 52px;
+  border-radius: 50%;
+  cursor: pointer;
+}
+
+.lightbox-btn:hover {
+  background: rgba(255, 255, 255, 0.2);
+}
+
+.lightbox-close {
+  top: var(--space-5);
+  right: var(--space-5);
+}
+
+.lightbox-prev {
+  left: var(--space-5);
+}
+
+.lightbox-next {
+  right: var(--space-5);
+}
+
+.lightbox-counter {
+  position: absolute;
+  bottom: var(--space-5);
+  color: var(--text-muted);
+  margin: 0;
+}

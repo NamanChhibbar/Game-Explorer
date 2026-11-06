@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Game Explorer</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}">
+</head>
+<body>
+  <header class="site-header">
+    <div class="container">
+      <h1 class="logo">Game<span>Explorer</span></h1>
+      <p class="tagline">Search games, compare live store prices.</p>
+    </div>
+  </header>
+
+  <main class="container">
+    <!-- ===== Browse view: search form + results grid ===== -->
+    <section id="browse-view">
+      <form id="search-form" class="search-form" novalidate>
+        <div class="field field-query">
+          <label for="query">Game</label>
+          <input id="query" name="query" type="text" placeholder="e.g. Hollow Knight" autocomplete="off">
+        </div>
+
+        <div class="field">
+          <label for="genre">Genre</label>
+          <select id="genre" name="genre">
+            <option value="">All genres</option>
+          </select>
+        </div>
+
+        <div class="field">
+          <label for="mode">Game mode</label>
+          <select id="mode" name="mode">
+            <option value="">Any mode</option>
+          </select>
+        </div>
+
+        <div class="field">
+          <label for="ordering">Sort by</label>
+          <select id="ordering" name="ordering">
+            <option value="">Best match</option>
+            <option value="rating">Highest player score</option>
+            <option value="critics">Best critic score</option>
+            <option value="newest">Newest first</option>
+            <option value="name">Title A to Z</option>
+          </select>
+        </div>
+
+        <button type="submit" class="btn btn-primary">Search</button>
+      </form>
+
+      <p id="form-error" class="form-error" role="alert" hidden></p>
+
+      <p id="status" class="status" hidden></p>
+      <div id="results" class="results-grid"></div>
+      <div id="loader" class="loader" hidden aria-label="Loading"></div>
+
+      <div class="load-more-wrap">
+        <button id="load-more" type="button" class="btn btn-secondary" hidden>Load more</button>
+      </div>
+    </section>
+
+    <!-- ===== Detail view: filled in when a card is clicked ===== -->
+    <section id="detail-view" hidden>
+      <button id="back-btn" type="button" class="btn btn-secondary">&larr; Back to results</button>
+      <div id="detail-content"></div>
+    </section>
+  </main>
+
+  <!-- ===== Screenshot lightbox ===== -->
+  <div id="lightbox" class="lightbox" hidden role="dialog" aria-modal="true" aria-label="Screenshot viewer">
+    <button id="lightbox-close" type="button" class="lightbox-btn lightbox-close" aria-label="Close">&times;</button>
+    <button id="lightbox-prev" type="button" class="lightbox-btn lightbox-prev" aria-label="Previous">&#8249;</button>
+    <img id="lightbox-img" alt="">
+    <button id="lightbox-next" type="button" class="lightbox-btn lightbox-next" aria-label="Next">&#8250;</button>
+    <p id="lightbox-counter" class="lightbox-counter"></p>
+  </div>
+
+  <script src="{{ url_for('static', filename='js/app.js') }}"></script>
+</body>
+</html>
