@@ -1,0 +1,11 @@
+# Files excluded from the Cloud Run source upload.
+# Kept separate from .gitignore so requirements.txt is always uploaded.
+.gcloudignore
+.git
+.gitignore
+.env
+.venv/
+__pycache__/
+*.pyc
+*.pdf
+process_log.txt
