@@ -8,7 +8,7 @@
 </head>
 <body>
   <header class="site-header">
-    <div class="container">
+    <div class="container header-inner">
       <h1 class="logo">Game<span>Explorer</span></h1>
       <p class="tagline">Search games, compare live store prices.</p>
     </div>
@@ -16,11 +16,11 @@
 
   <main class="container">
     <!-- ===== Browse view: search form + results grid ===== -->
-    <section id="browse-view">
+    <section id="browse-view" aria-label="Search">
       <form id="search-form" class="search-form" novalidate>
         <div class="field field-query">
           <label for="query">Game</label>
-          <input id="query" name="query" type="text" placeholder="e.g. Hollow Knight" autocomplete="off">
+          <input id="query" name="query" type="search" placeholder="e.g. Hollow Knight" autocomplete="off" maxlength="100">
         </div>
 
         <div class="field">
@@ -53,28 +53,33 @@
 
       <p id="form-error" class="form-error" role="alert" hidden></p>
 
-      <p id="status" class="status" hidden></p>
+      <p id="results-meta" class="results-meta" aria-live="polite"></p>
+      <div id="status" class="status-wrap" hidden></div>
       <div id="results" class="results-grid"></div>
-      <div id="loader" class="loader" hidden aria-label="Loading"></div>
 
       <div class="load-more-wrap">
         <button id="load-more" type="button" class="btn btn-secondary" hidden>Load more</button>
+        <p id="load-more-error" class="inline-error" role="alert" hidden></p>
       </div>
     </section>
 
     <!-- ===== Detail view: filled in when a card is clicked ===== -->
-    <section id="detail-view" hidden>
-      <button id="back-btn" type="button" class="btn btn-secondary">&larr; Back to results</button>
+    <section id="detail-view" aria-label="Game details" hidden>
+      <button id="back-btn" type="button" class="btn btn-secondary back-btn">&larr; Back to results</button>
       <div id="detail-content"></div>
     </section>
   </main>
 
+  <footer class="site-footer">
+    <div class="container">Game data from IGDB.com &middot; Prices from CheapShark</div>
+  </footer>
+
   <!-- ===== Screenshot lightbox ===== -->
   <div id="lightbox" class="lightbox" hidden role="dialog" aria-modal="true" aria-label="Screenshot viewer">
     <button id="lightbox-close" type="button" class="lightbox-btn lightbox-close" aria-label="Close">&times;</button>
-    <button id="lightbox-prev" type="button" class="lightbox-btn lightbox-prev" aria-label="Previous">&#8249;</button>
+    <button id="lightbox-prev" type="button" class="lightbox-btn lightbox-prev" aria-label="Previous screenshot">&#8249;</button>
     <img id="lightbox-img" alt="">
-    <button id="lightbox-next" type="button" class="lightbox-btn lightbox-next" aria-label="Next">&#8250;</button>
+    <button id="lightbox-next" type="button" class="lightbox-btn lightbox-next" aria-label="Next screenshot">&#8250;</button>
     <p id="lightbox-counter" class="lightbox-counter"></p>
   </div>
 
