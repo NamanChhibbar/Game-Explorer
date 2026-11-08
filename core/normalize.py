@@ -6,8 +6,20 @@ IGDB omits a field entirely when it has no value, so every lookup here uses
 '''
 
 from datetime import datetime, timezone
+from typing import Any
 
 from .config import CHEAPSHARK_SITE_URL, IGDB_IMAGE_URL
+from .schemas import (
+    Deals,
+    FilterOption,
+    Filters,
+    GameCard,
+    GameDetail,
+    Offer,
+    PricePoint,
+    RawJSON,
+    StoreInfo,
+)
 
 CHEAPSHARK_REDIRECT_URL = 'https://www.cheapshark.com/redirect?dealID={deal_id}'
 OFFICIAL_WEBSITE_TYPE = 1  # IGDB website type id for "Official Website"
@@ -18,47 +30,60 @@ STEAM_CATEGORY = 1         # old numeric external_games.category for Steam
 # Small helpers
 # ---------------------------------------------------------------------------
 
-def image_url(image_id, size):
-    '''Build an IGDB image URL, e.g. size "cover_big" or "screenshot_med".'''
+def image_url(image_id: str | None, size: str) -> str | None:
+    '''
+    Build an IGDB image URL.
+
+    Args:
+        image_id: IGDB image id, or None.
+        size: IGDB size name, e.g. 'cover_big', 'screenshot_med' or '1080p'.
+
+    Returns:
+        The image URL, or None if there is no image id.
+    '''
     return IGDB_IMAGE_URL.format(size=size, image_id=image_id) if image_id else None
 
 
-def _first_image_id(items):
+def _first_image_id(items: list[RawJSON] | None) -> str | None:
+    '''The image_id of the first cover/screenshot object, or None.'''
     return items[0].get('image_id') if items else None
 
 
-def _names(items):
+def _names(items: list[RawJSON] | None) -> list[str]:
+    '''The non-empty `name` of each object, e.g. genre or game mode names.'''
     return [item['name'] for item in items or [] if item.get('name')]
 
 
-def _platform_names(platforms):
+def _platform_names(platforms: list[RawJSON] | None) -> list[str]:
     '''Short labels like "PC" or "PS5", falling back to the full name.'''
     labels = (p.get('abbreviation') or p.get('name') for p in platforms or [])
     return [label for label in labels if label]
 
 
-def _score(value):
+def _score(value: float | None) -> int | None:
     '''IGDB scores are floats like 88.4213; round to a whole number out of 100.'''
     return round(value) if value is not None else None
 
 
-def _to_datetime(timestamp):
-    # IGDB dates are Unix timestamps in seconds, in UTC.
+def _to_datetime(timestamp: int | None) -> datetime | None:
+    '''Convert an IGDB date (Unix seconds, UTC) to an aware datetime.'''
     return datetime.fromtimestamp(timestamp, tz=timezone.utc) if timestamp is not None else None
 
 
-def _year(timestamp):
+def _year(timestamp: int | None) -> int | None:
+    '''The release year of an IGDB timestamp, or None.'''
     date = _to_datetime(timestamp)
     return date.year if date else None
 
 
-def _iso_date(timestamp):
+def _iso_date(timestamp: int | None) -> str | None:
+    '''An IGDB/CheapShark timestamp as 'YYYY-MM-DD' (UTC), or None.'''
     date = _to_datetime(timestamp)
     return date.strftime('%Y-%m-%d') if date else None
 
 
-def _to_float(value):
-    '''CheapShark sends prices and savings as strings like "14.99".'''
+def _to_float(value: Any) -> float | None:
+    '''CheapShark sends prices and savings as strings like "14.99"; None if unparsable.'''
     try:
         return float(value)
     except (TypeError, ValueError):
@@ -69,8 +94,18 @@ def _to_float(value):
 # /api/filters
 # ---------------------------------------------------------------------------
 
-def normalize_filters(genres, modes):
-    def options(items):
+def normalize_filters(genres: list[RawJSON], modes: list[RawJSON]) -> Filters:
+    '''
+    Build the /api/filters response.
+
+    Args:
+        genres: Raw IGDB /genres results.
+        modes: Raw IGDB /game_modes results.
+
+    Returns:
+        {genres, modes}, each a list of {id, name} with unnamed entries dropped.
+    '''
+    def options(items: list[RawJSON]) -> list[FilterOption]:
         return [{'id': item['id'], 'name': item['name']} for item in items if item.get('name')]
 
     return {'genres': options(genres), 'modes': options(modes)}
@@ -80,8 +115,16 @@ def normalize_filters(genres, modes):
 # /api/search
 # ---------------------------------------------------------------------------
 
-def normalize_card(game):
-    '''One search result. Artwork: first screenshot, else cover, else None.'''
+def normalize_card(game: RawJSON) -> GameCard:
+    '''
+    Build one search result card.
+
+    Args:
+        game: One raw IGDB /games result requested with CARD_FIELDS.
+
+    Returns:
+        The card. Artwork is the first screenshot, else the cover, else None.
+    '''
     screenshot = _first_image_id(game.get('screenshots'))
     cover = (game.get('cover') or {}).get('image_id')
     image = image_url(screenshot, 'screenshot_med') or image_url(cover, 'cover_big')
@@ -104,8 +147,8 @@ def normalize_card(game):
 # /api/game/<id>
 # ---------------------------------------------------------------------------
 
-def _companies(game, role):
-    '''Names of involved companies with the given role ("developer" or "publisher").'''
+def _companies(game: RawJSON, role: str) -> list[str]:
+    '''Names of involved companies with the given role ('developer' or 'publisher').'''
     return [
         entry['company']['name']
         for entry in game.get('involved_companies') or []
@@ -113,7 +156,7 @@ def _companies(game, role):
     ]
 
 
-def _esrb(game):
+def _esrb(game: RawJSON) -> str | None:
     '''The ESRB rating (e.g. "M", "E10+") among all age ratings, or None.'''
     for rating in game.get('age_ratings') or []:
         if (rating.get('organization') or {}).get('name') == 'ESRB':
@@ -121,19 +164,26 @@ def _esrb(game):
     return None
 
 
-def _official_website(game):
+def _official_website(game: RawJSON) -> str:
+    '''The URL of the game's official website, or '' if IGDB lists none.'''
     for site in game.get('websites') or []:
         if site.get('type') == OFFICIAL_WEBSITE_TYPE and site.get('url'):
             return site['url']
     return ''
 
 
-def steam_app_id(game):
+def steam_app_id(game: RawJSON) -> str | None:
     '''
-    The game's Steam app id from IGDB external_games, or None.
+    Find the game's Steam app id in IGDB external_games.
 
     IGDB is replacing the numeric `category` (1 = Steam) with
     `external_game_source`, so both are checked.
+
+    Args:
+        game: A raw IGDB /games result requested with DETAIL_FIELDS.
+
+    Returns:
+        The Steam app id, or None if the game is not on Steam.
     '''
     for entry in game.get('external_games') or []:
         source = (entry.get('external_game_source') or {}).get('name')
@@ -142,8 +192,16 @@ def steam_app_id(game):
     return None
 
 
-def normalize_detail(game):
-    '''Everything except the prices (deals are merged in by the service).'''
+def normalize_detail(game: RawJSON) -> GameDetail:
+    '''
+    Build the game detail response, except for the prices.
+
+    Args:
+        game: A raw IGDB /games result requested with DETAIL_FIELDS.
+
+    Returns:
+        The detail fields. `deals` and `deals_error` are added by the service.
+    '''
     screenshot_ids = [s['image_id'] for s in game.get('screenshots') or [] if s.get('image_id')]
     cover_id = (game.get('cover') or {}).get('image_id')
     hero_id = screenshot_ids[0] if screenshot_ids else None
@@ -178,9 +236,18 @@ def normalize_detail(game):
     }
 
 
-def normalize_stores(stores):
-    '''storeID -> {name, icon}. Icon paths are relative to cheapshark.com.'''
-    result = {}
+def normalize_stores(stores: list[RawJSON]) -> dict[str, StoreInfo]:
+    '''
+    Index the CheapShark store list by id.
+
+    Args:
+        stores: Raw CheapShark /stores results.
+
+    Returns:
+        storeID (as a string) -> {name, icon}. Icon paths are made absolute,
+        since CheapShark gives them relative to cheapshark.com.
+    '''
+    result: dict[str, StoreInfo] = {}
     for store in stores:
         icon = (store.get('images') or {}).get('icon')
         result[str(store['storeID'])] = {
@@ -190,23 +257,31 @@ def normalize_stores(stores):
     return result
 
 
-def normalize_deals(data, stores):
+def normalize_deals(data: RawJSON, stores: dict[str, StoreInfo]) -> Deals | None:
     '''
-    Build the `deals` object from a CheapShark games?id= response, or return
-    None if there are no offers. `stores` may be empty if the store list
-    failed; offers are still shown, just without names and icons.
+    Build the `deals` object from a CheapShark games?id= response.
+
+    Args:
+        data: Raw CheapShark games?id= response.
+        stores: Output of normalize_stores(). May be empty if the store list
+            failed; offers are still shown, labelled 'Store #<id>' and
+            without icons.
+
+    Returns:
+        Offers sorted by price (the first one marked is_cheapest) plus the
+        all-time low, or None if there are no offers with a valid price.
     '''
-    offers = []
+    offers: list[Offer] = []
     for deal in data.get('deals') or []:
         price = _to_float(deal.get('price'))
         if price is None:
             continue
         store_id = str(deal.get('storeID'))
-        store = stores.get(store_id, {})
+        store = stores.get(store_id)
         savings = _to_float(deal.get('savings'))
         offers.append({
-            'store': store.get('name', f'Store #{store_id}'),
-            'icon': store.get('icon'),
+            'store': store['name'] if store else f'Store #{store_id}',
+            'icon': store['icon'] if store else None,
             'price': price,
             'retail_price': _to_float(deal.get('retailPrice')),
             'savings': round(savings) if savings is not None else None,
@@ -222,7 +297,7 @@ def normalize_deals(data, stores):
 
     lowest = data.get('cheapestPriceEver') or {}
     lowest_price = _to_float(lowest.get('price'))
-    cheapest_ever = (
+    cheapest_ever: PricePoint | None = (
         {'price': lowest_price, 'date': _iso_date(lowest.get('date'))}
         if lowest_price is not None else None
     )

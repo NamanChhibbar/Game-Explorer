@@ -15,7 +15,8 @@ read from environment variables and never sent to the client.
 
 import logging
 
-from flask import Flask, jsonify, render_template, request
+from flask import Flask, Response, jsonify, render_template, request
+from werkzeug.exceptions import HTTPException
 
 from core.cache import TTLCache
 from core.cheapshark import CheapSharkClient
@@ -46,23 +47,26 @@ service = GameExplorerService(igdb, cheapshark, cache=TTLCache())
 # ---------------------------------------------------------------------------
 
 @app.errorhandler(ApiError)
-def api_error(error):
+def api_error(error: ApiError) -> tuple[Response, int]:
     '''Validation (400), not found (404) and upstream (502) errors.'''
     return jsonify({'error': error.message}), error.status_code
 
 
 @app.errorhandler(404)
-def not_found(_error):
+def not_found(_error: HTTPException) -> tuple[Response, int]:
+    '''Unknown URL, including a non-numeric /api/game/<id>.'''
     return jsonify({'error': 'Not found.'}), 404
 
 
 @app.errorhandler(405)
-def method_not_allowed(_error):
+def method_not_allowed(_error: HTTPException) -> tuple[Response, int]:
+    '''A known URL called with the wrong HTTP method.'''
     return jsonify({'error': 'Method not allowed.'}), 405
 
 
 @app.errorhandler(500)
-def server_error(_error):
+def server_error(_error: Exception) -> tuple[Response, int]:
+    '''Any unhandled exception. The details stay in the log, not the response.'''
     return jsonify({'error': 'Something went wrong on the server.'}), 500
 
 
@@ -71,26 +75,26 @@ def server_error(_error):
 # ---------------------------------------------------------------------------
 
 @app.route('/')
-def index():
+def index() -> str:
     '''Serve the single-page frontend.'''
     return render_template('index.html')
 
 
 @app.get('/api/filters')
-def api_filters():
+def api_filters() -> Response:
     '''Genres and game modes for the dropdowns.'''
     return jsonify(service.filters())
 
 
 @app.get('/api/search')
-def api_search():
+def api_search() -> Response:
     '''Search IGDB. Params: query (required), genre, mode, ordering, page.'''
     query, genre, mode, ordering, page = parse_search_args(request.args, service.filters)
     return jsonify(service.search(query, genre, mode, ordering, page))
 
 
 @app.get('/api/game/<int:game_id>')
-def api_game(game_id):
+def api_game(game_id: int) -> Response:
     '''Merged game details, screenshots and store prices.'''
     return jsonify(service.game(game_id))
 

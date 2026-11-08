@@ -5,12 +5,14 @@ parallel, normalizes the results, and caches only complete answers.
 '''
 
 import logging
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import Future, ThreadPoolExecutor
+from typing import Any
 
-from .cache import make_key
+from .cache import TTLCache, make_key
+from .cheapshark import CheapSharkClient
 from .config import FILTERS_TTL, GAME_TTL, MAX_GAME_ID, PAGE_SIZE, SEARCH_TTL, STORES_TTL
 from .errors import NotFoundError, PriceLookupError, UpstreamError
-from .igdb import FILTER_LIST_QUERY, build_detail_query, build_search_queries
+from .igdb import FILTER_LIST_QUERY, IGDBClient, build_detail_query, build_search_queries
 from .normalize import (
     normalize_card,
     normalize_deals,
@@ -19,6 +21,7 @@ from .normalize import (
     normalize_stores,
     steam_app_id,
 )
+from .schemas import Deals, Filters, GameDetail, RawJSON, SearchPage, StoreInfo
 
 logger = logging.getLogger(__name__)
 
@@ -26,17 +29,33 @@ PRICES_UNAVAILABLE = 'Prices unavailable right now.'
 
 
 class GameExplorerService:
-    def __init__(self, igdb, cheapshark, cache):
+    '''
+    Combines IGDB, CheapShark and the cache into the three API operations.
+    One instance is shared by every request thread.
+    '''
+
+    def __init__(self, igdb: IGDBClient, cheapshark: CheapSharkClient, cache: TTLCache) -> None:
+        '''
+        Args:
+            igdb: Client for game data.
+            cheapshark: Client for store prices.
+            cache: Shared cache for complete responses and the store list.
+        '''
         self._igdb = igdb
         self._cheapshark = cheapshark
         self._cache = cache
 
     # ----- /api/filters -------------------------------------------------------
 
-    def filters(self):
-        '''Genres and game modes for the dropdowns (cached for 24 hours).'''
+    def filters(self) -> Filters:
+        '''
+        Genres and game modes for the dropdowns, cached for 24 hours.
+
+        Raises:
+            UpstreamError: IGDB failed (HTTP 502).
+        '''
         key = make_key('filters')
-        cached = self._cache.get(key)
+        cached: Filters | None = self._cache.get(key)
         if cached is not None:
             return cached
 
@@ -51,11 +70,36 @@ class GameExplorerService:
 
     # ----- /api/search --------------------------------------------------------
 
-    def search(self, query, genre, mode, ordering, page):
-        '''One page of results. Arguments must already be validated.'''
+    def search(
+        self,
+        query: str,
+        genre: str | None,
+        mode: str | None,
+        ordering: str | None,
+        page: int,
+    ) -> SearchPage:
+        '''
+        One page of search results, cached for 15 minutes.
+
+        All arguments must already be validated by parse_search_args().
+
+        Args:
+            query: Search text.
+            genre: IGDB genre id, or None.
+            mode: IGDB game mode id, or None.
+            ordering: One of ORDERINGS, or None for relevance.
+            page: 1-based page number.
+
+        Returns:
+            {count, page, has_next, results}. count is None if only the count
+            query failed; such a partial page is not cached.
+
+        Raises:
+            UpstreamError: The results query failed (HTTP 502).
+        '''
         key = make_key('search', query=query.casefold(), genre=genre, mode=mode,
                        ordering=ordering, page=page)
-        cached = self._cache.get(key)
+        cached: SearchPage | None = self._cache.get(key)
         if cached is not None:
             return cached
 
@@ -75,14 +119,21 @@ class GameExplorerService:
         else:
             has_next = len(results) == PAGE_SIZE  # a full page suggests there may be more
 
-        response = {'count': count, 'page': page, 'has_next': has_next, 'results': results}
+        response: SearchPage = {'count': count, 'page': page, 'has_next': has_next, 'results': results}
         if count is not None:  # don't cache a partial answer for 15 minutes
             self._cache.set(key, response, SEARCH_TTL)
         return response
 
     @staticmethod
-    def _count_or_none(future):
-        '''The count is optional: if it fails, the results are still returned.'''
+    def _count_or_none(future: Future[Any]) -> int | None:
+        '''
+        Read the total from a /games/count future.
+
+        The count is optional: if it fails, the results are still returned.
+
+        Returns:
+            The total number of matches, or None if the query failed.
+        '''
         try:
             return int(future.result()['count'])
         except (UpstreamError, KeyError, TypeError, ValueError):
@@ -91,13 +142,26 @@ class GameExplorerService:
 
     # ----- /api/game/<id> -----------------------------------------------------
 
-    def game(self, game_id):
-        '''Merged IGDB details + CheapShark prices.'''
+    def game(self, game_id: int) -> GameDetail:
+        '''
+        Merged IGDB details and CheapShark prices, cached for 15 minutes.
+
+        Args:
+            game_id: IGDB game id.
+
+        Returns:
+            The detail response. If CheapShark failed, deals is None,
+            deals_error holds a message, and the response is not cached.
+
+        Raises:
+            NotFoundError: No game has this id (HTTP 404).
+            UpstreamError: IGDB failed (HTTP 502).
+        '''
         if game_id > MAX_GAME_ID:
             raise NotFoundError('Game not found.')
 
         key = make_key('game', id=game_id)
-        cached = self._cache.get(key)
+        cached: GameDetail | None = self._cache.get(key)
         if cached is not None:
             return cached
 
@@ -119,14 +183,19 @@ class GameExplorerService:
 
         # If CheapShark failed, don't cache: one blip would otherwise mean
         # 15 minutes of "Prices unavailable" after it recovers.
-        if result['deals_error'] is None:
+        if result.get('deals_error') is None:
             self._cache.set(key, result, GAME_TTL)
         return result
 
-    def _stores(self):
-        '''CheapShark storeID -> {name, icon}, cached for 24 hours.'''
+    def _stores(self) -> dict[str, StoreInfo]:
+        '''
+        CheapShark storeID -> {name, icon}, cached for 24 hours.
+
+        Never raises: returns {} if CheapShark failed, since store names and
+        icons are cosmetic.
+        '''
         key = make_key('stores')
-        cached = self._cache.get(key)
+        cached: dict[str, StoreInfo] | None = self._cache.get(key)
         if cached is not None:
             return cached
         try:
@@ -136,8 +205,18 @@ class GameExplorerService:
         self._cache.set(key, stores, STORES_TTL)
         return stores
 
-    def _deals(self, raw_game, stores):
-        '''Return (deals, deals_error). deals is None when there is no price data.'''
+    def _deals(self, raw_game: RawJSON, stores: dict[str, StoreInfo]) -> tuple[Deals | None, str | None]:
+        '''
+        Look up a game's prices on CheapShark.
+
+        Args:
+            raw_game: The raw IGDB detail result (for its Steam id and name).
+            stores: Output of _stores().
+
+        Returns:
+            (deals, deals_error): (deals, None) on success, (None, None) when
+            the game has no price data, and (None, message) if CheapShark failed.
+        '''
         try:
             cheapshark_id = self._cheapshark.find_game_id(steam_app_id(raw_game), raw_game.get('name'))
             if not cheapshark_id:

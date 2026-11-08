@@ -20,8 +20,8 @@ except ImportError:
     logger.info('python-dotenv not installed; skipping .env load')
 
 # --- Credentials -----------------------------------------------------------
-IGDB_CLIENT_ID = os.environ.get('IGDB_CLIENT_ID')
-IGDB_CLIENT_SECRET = os.environ.get('IGDB_CLIENT_SECRET')
+IGDB_CLIENT_ID: str | None = os.environ.get('IGDB_CLIENT_ID')
+IGDB_CLIENT_SECRET: str | None = os.environ.get('IGDB_CLIENT_SECRET')
 
 if not IGDB_CLIENT_ID or not IGDB_CLIENT_SECRET:
     # Warn without printing either value.
@@ -43,7 +43,7 @@ IGDB_RATE_LIMIT_RETRY_DELAY = 1.0  # if IGDB still answers 429, wait this long b
 # Standalone Expansion (4), Remake (8), Remaster (9). This leaves out DLC,
 # bundles, mods, episodes, seasons, "Expanded Game" re-releases, ports,
 # forks, packs and updates, which otherwise crowd the sorted results.
-IGDB_GAME_TYPES = (0, 2, 4, 8, 9)
+IGDB_GAME_TYPES: tuple[int, ...] = (0, 2, 4, 8, 9)
 
 # --- CheapShark ------------------------------------------------------------
 CHEAPSHARK_BASE_URL = 'https://www.cheapshark.com/api/1.0'
@@ -53,7 +53,7 @@ CHEAPSHARK_TIMEOUT = 5         # seconds per CheapShark request
 # CheapShark rejects requests without a descriptive User-Agent (the default
 # python-requests one gets HTTP 400). Override with APP_USER_AGENT, e.g. to
 # add a contact email.
-USER_AGENT = os.environ.get('APP_USER_AGENT', 'GameExplorer/1.0 (CSCI 571 student project)')
+USER_AGENT: str = os.environ.get('APP_USER_AGENT', 'GameExplorer/1.0 (CSCI 571 student project)')
 
 # --- Cache -----------------------------------------------------------------
 CACHE_MAX_ENTRIES = 500
@@ -66,7 +66,7 @@ STORES_TTL = 24 * 60 * 60      # CheapShark store list
 PAGE_SIZE = 12
 MAX_GAME_ID = 2**31 - 1  # IGDB ids are 32-bit; larger values make IGDB return 400
 MAX_QUERY_LENGTH = 100
-ORDERINGS = ('rating', 'critics', 'newest', 'name')
+ORDERINGS: tuple[str, ...] = ('rating', 'critics', 'newest', 'name')
 
 # --- Local server ----------------------------------------------------------
-PORT = int(os.environ.get('PORT', 8080))
+PORT: int = int(os.environ.get('PORT', 8080))

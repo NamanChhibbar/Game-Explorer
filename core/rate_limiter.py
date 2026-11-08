@@ -15,13 +15,18 @@ class RateLimiter:
     caller waits here until a slot in the window is free.
     '''
 
-    def __init__(self, max_calls, period=1.0):
+    def __init__(self, max_calls: int, period: float = 1.0) -> None:
+        '''
+        Args:
+            max_calls: Calls allowed to start within one window.
+            period: Window length in seconds.
+        '''
         self._max_calls = max_calls
         self._period = period
-        self._calls = deque()  # start times of recent calls, oldest first
+        self._calls: deque[float] = deque()  # start times of recent calls, oldest first
         self._lock = threading.Lock()
 
-    def acquire(self):
+    def acquire(self) -> None:
         '''Block until the call may proceed, then record it.'''
         while True:
             with self._lock:

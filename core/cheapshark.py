@@ -6,31 +6,57 @@ carry a descriptive User-Agent (set on the shared session).
 
 import logging
 import re
+from typing import Any
 
 import requests
 
 from .config import CHEAPSHARK_BASE_URL, CHEAPSHARK_TIMEOUT
 from .errors import PriceLookupError
+from .schemas import RawJSON
 
 logger = logging.getLogger(__name__)
 
 
 class CheapSharkClient:
-    def __init__(self, session):
+    '''Read-only CheapShark API client. Every failure raises PriceLookupError.'''
+
+    def __init__(self, session: requests.Session) -> None:
+        '''
+        Args:
+            session: Shared HTTP session (it carries the required User-Agent).
+        '''
         self._session = session
 
-    def stores(self):
-        '''Raw store list: [{storeID, storeName, images: {icon}}, ...].'''
+    def stores(self) -> list[RawJSON]:
+        '''
+        Fetch the raw store list.
+
+        Returns:
+            [{storeID, storeName, images: {icon}, ...}, ...]
+
+        Raises:
+            PriceLookupError: CheapShark failed or answered unexpectedly.
+        '''
         return self._get('stores', expect=list)
 
-    def find_game_id(self, steam_app_id, title):
+    def find_game_id(self, steam_app_id: str | None, title: str | None) -> str | None:
         '''
-        Return the CheapShark gameID for a game, or None if it has no prices.
+        Find the CheapShark gameID for an IGDB game.
 
         A Steam app id is an exact match, so try it first. Otherwise (or if
         CheapShark doesn't know that id) search by title and accept only a
         title that matches; taking the first fuzzy result could show prices
         for a different game or a DLC.
+
+        Args:
+            steam_app_id: The game's Steam app id from IGDB, if any.
+            title: The game's IGDB name, if any.
+
+        Returns:
+            The CheapShark gameID, or None if the game has no price data.
+
+        Raises:
+            PriceLookupError: CheapShark failed or answered unexpectedly.
         '''
         if steam_app_id:
             matches = self._get('games', {'steamAppID': steam_app_id}, expect=list)
@@ -43,21 +69,45 @@ class CheapSharkClient:
 
         return None
 
-    def game(self, cheapshark_id):
+    def game(self, cheapshark_id: str) -> RawJSON | None:
         '''
-        Raw game info: {info, cheapestPriceEver, deals: [...]}, or None.
-        CheapShark answers an unknown id with an empty list, which just means
-        there is no price data.
+        Fetch a game's current deals.
+
+        Args:
+            cheapshark_id: A gameID from find_game_id().
+
+        Returns:
+            {info, cheapestPriceEver, deals: [...]}, or None for an unknown
+            id (CheapShark answers those with an empty list, which just means
+            there is no price data).
+
+        Raises:
+            PriceLookupError: CheapShark failed or answered unexpectedly.
         '''
         data = self._get('games', {'id': cheapshark_id}, expect=(dict, list))
         return data if isinstance(data, dict) else None
 
-    def _get(self, path, params=None, expect=(dict, list)):
+    def _get(
+        self,
+        path: str,
+        params: dict[str, Any] | None = None,
+        expect: type | tuple[type, ...] = (dict, list),
+    ) -> Any:
         '''
-        GET a CheapShark endpoint and return its JSON. Raises PriceLookupError
-        on a timeout, an HTTP error, invalid JSON, or JSON of an unexpected
-        type (e.g. an error object where a list was expected), so callers
-        never crash on a surprising 200 response.
+        GET a CheapShark endpoint and return its parsed JSON.
+
+        Args:
+            path: Endpoint path relative to the API base, e.g. 'games'.
+            params: Query string parameters.
+            expect: Type(s) the JSON must have, checked with isinstance().
+
+        Returns:
+            The parsed JSON, guaranteed to be an instance of `expect`.
+
+        Raises:
+            PriceLookupError: On a timeout, an HTTP error, invalid JSON, or
+                JSON of an unexpected type (e.g. an error object where a list
+                was expected), so callers never crash on a surprising 200.
         '''
         try:
             response = self._session.get(
@@ -81,13 +131,25 @@ class CheapSharkClient:
         return data
 
 
-def _simplify_title(title):
+def _simplify_title(title: str) -> str:
     '''Lowercase and drop ™/®/punctuation so "DOOM™" matches "Doom".'''
     return re.sub(r'[^a-z0-9]+', ' ', title.lower()).strip()
 
 
-def pick_title_match(matches, title):
-    '''Prefer an exact (case-insensitive) title, then one equal after simplifying.'''
+def pick_title_match(matches: list[Any], title: str) -> str | None:
+    '''
+    Pick the CheapShark search result whose title matches the IGDB title.
+
+    Prefers an exact (case-insensitive) title, then one equal after
+    simplifying. Anything else is rejected rather than guessed.
+
+    Args:
+        matches: Raw results of games?title=; malformed entries are skipped.
+        title: The IGDB game name.
+
+    Returns:
+        The matching gameID, or None.
+    '''
     wanted = title.casefold()
     matches = [match for match in matches if isinstance(match, dict) and match.get('gameID')]
     for match in matches:

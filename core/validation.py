@@ -1,19 +1,31 @@
 '''Validation and whitelisting of /api/search query parameters.'''
 
+from collections.abc import Callable, Mapping
+
 from .config import MAX_QUERY_LENGTH, ORDERINGS
 from .errors import ValidationError
+from .schemas import Filters
+
+# (query, genre, mode, ordering, page) - the arguments of GameExplorerService.search().
+SearchArgs = tuple[str, str | None, str | None, str | None, int]
 
 
-def parse_search_args(args, get_filters):
+def parse_search_args(args: Mapping[str, str], get_filters: Callable[[], Filters]) -> SearchArgs:
     '''
     Validate request.args for /api/search and return clean values.
 
-    get_filters is a callable returning the /api/filters data. It is only
-    called when a genre or mode is given, since that's the only time the
-    whitelist is needed (and it's cached after the first call).
+    Args:
+        args: The query string, e.g. Flask's request.args.
+        get_filters: Returns the /api/filters data. It is only called when a
+            genre or mode is given, since that's the only time the whitelist
+            is needed (and it's cached after the first call).
 
-    Returns (query, genre, mode, ordering, page); genre/mode/ordering are
-    None when omitted. Raises ValidationError (HTTP 400) on bad input.
+    Returns:
+        (query, genre, mode, ordering, page). genre, mode and ordering are
+        None when omitted; page defaults to 1.
+
+    Raises:
+        ValidationError: A parameter is missing or invalid (HTTP 400).
     '''
     # Collapse runs of whitespace (incl. tabs/newlines) so "zelda  " and
     # "zelda" are the same search and share one cache entry.

@@ -7,6 +7,7 @@ Every IGDB request is a POST whose body is a plain-text Apicalypse query
 
 import logging
 import time
+from typing import Any
 
 import requests
 
@@ -20,6 +21,7 @@ from .config import (
 )
 from .errors import UpstreamError
 from .rate_limiter import RateLimiter
+from .token_store import TokenStore
 
 logger = logging.getLogger(__name__)
 
@@ -30,20 +32,37 @@ TIMEOUT_MESSAGE = 'The game database took too long to respond. Please try again.
 class IGDBClient:
     '''Sends Apicalypse queries to IGDB, handling the token and retries.'''
 
-    def __init__(self, client_id, token_store, session):
+    def __init__(self, client_id: str | None, token_store: TokenStore, session: requests.Session) -> None:
+        '''
+        Args:
+            client_id: Twitch/IGDB client id sent in the Client-ID header.
+            token_store: Source of bearer tokens; shared by all threads.
+            session: Shared HTTP session.
+        '''
         self._client_id = client_id
         self._tokens = token_store
         self._session = session
         self._limiter = RateLimiter(IGDB_MAX_REQUESTS_PER_SECOND, period=1.0)
 
-    def post(self, endpoint, body):
+    def post(self, endpoint: str, body: str) -> Any:
         '''
-        Run one query and return the parsed JSON (a list, or a dict for /count).
+        Run one Apicalypse query and return the parsed JSON.
 
         Every request first waits on the rate limiter (IGDB allows 4 per
         second). Retries once on 401 with a fresh token (the token may have
         been revoked before its expiry) and once on 429 after a pause, in case
-        the limit was hit anyway. Any other failure raises UpstreamError.
+        the limit was hit anyway.
+
+        Args:
+            endpoint: IGDB endpoint path, e.g. 'games' or 'games/count'.
+            body: The Apicalypse query text.
+
+        Returns:
+            A list of objects, or a {'count': n} dict for a /count endpoint.
+
+        Raises:
+            UpstreamError: IGDB timed out, failed, or returned invalid JSON.
+            TokenError: No access token could be obtained.
         '''
         token = self._tokens.get()
         response = self._send(endpoint, body, token)
@@ -68,12 +87,18 @@ class IGDBClient:
             logger.error('IGDB /%s returned invalid JSON', endpoint)
             raise UpstreamError(UNAVAILABLE_MESSAGE) from None
 
-    def _send(self, endpoint, body, token):
+    def _send(self, endpoint: str, body: str, token: str) -> requests.Response:
+        '''
+        Send one rate-limited POST to IGDB and return the raw response.
+
+        Raises:
+            UpstreamError: The request timed out or could not be sent.
+        '''
         self._limiter.acquire()
         try:
             return self._session.post(
                 f'{IGDB_BASE_URL}/{endpoint}',
-                headers={
+                headers={       # type: ignore
                     'Client-ID': self._client_id,
                     'Authorization': f'Bearer {token}',
                     'Accept': 'application/json',
@@ -115,7 +140,7 @@ DETAIL_FIELDS = ', '.join([
 # ordering value -> (sort clause, extra where condition or None).
 # The extra conditions drop games with no value for the sort field, and stop
 # obscure games with one or two ratings from filling the top of the list.
-SORTS = {
+SORTS: dict[str, tuple[str, str | None]] = {
     'rating': ('total_rating desc', 'total_rating != null & total_rating_count >= 3'),
     'critics': ('aggregated_rating desc', 'aggregated_rating != null & aggregated_rating_count >= 2'),
     'newest': ('first_release_date desc', 'first_release_date != null & first_release_date <= {now}'),
@@ -123,23 +148,46 @@ SORTS = {
 }
 
 
-def escape(term):
+def escape(term: str) -> str:
     '''
     Escape a user's search term for use inside an Apicalypse "quoted string".
 
     Backslashes first, then quotes, so a title like  Say "Hi"  cannot close
     the string early and inject extra clauses into the query.
+
+    Args:
+        term: Raw search text from the user.
+
+    Returns:
+        The text, safe to place between double quotes in a query.
     '''
     return term.replace('\\', '\\\\').replace('"', '\\"')
 
 
-def build_search_queries(term, genre_id=None, mode_id=None, ordering=None, page=1):
+def build_search_queries(
+    term: str,
+    genre_id: str | int | None = None,
+    mode_id: str | int | None = None,
+    ordering: str | None = None,
+    page: int = 1,
+) -> tuple[str, str]:
     '''
-    Return (results_query, count_query) for one page of search results.
+    Build the queries for one page of search results.
 
     `search "term";` ranks by relevance and ignores any sort clause, so when
     the user picks a sort order we switch to a substring match instead:
     `where name ~ *"term"*;`, which can be sorted.
+
+    Args:
+        term: Validated search text (escaped here).
+        genre_id: IGDB genre id to filter by, or None for all genres.
+        mode_id: IGDB game mode id to filter by, or None for any mode.
+        ordering: A key of SORTS, or None for relevance order.
+        page: 1-based page number.
+
+    Returns:
+        (results_query, count_query): the query for the page of games for
+        /games, and the matching query for /games/count.
     '''
     safe = escape(term)
     conditions = [
@@ -169,5 +217,14 @@ def build_search_queries(term, genre_id=None, mode_id=None, ordering=None, page=
     return results_query, count_query
 
 
-def build_detail_query(game_id):
+def build_detail_query(game_id: int) -> str:
+    '''
+    Build the query that fetches every detail-view field for one game.
+
+    Args:
+        game_id: IGDB game id.
+
+    Returns:
+        An Apicalypse query for the /games endpoint.
+    '''
     return f'fields {DETAIL_FIELDS}; where id = {int(game_id)}; limit 1;'
