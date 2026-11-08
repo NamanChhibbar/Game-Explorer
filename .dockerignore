@@ -1,0 +1,9 @@
+# Keep secrets and local clutter out of locally built Docker images.
+# (gcloud builds use .gcloudignore instead.)
+.env
+.venv/
+.git
+__pycache__/
+*.pyc
+*.pdf
+process_log.txt
