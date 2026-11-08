@@ -9,3 +9,4 @@ __pycache__/
 # Course materials and AI log (submitted separately, not part of the repo)
 *.pdf
 process_log.txt
+*.mov
